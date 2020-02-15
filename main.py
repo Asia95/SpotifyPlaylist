@@ -27,7 +27,11 @@ def main():
         part="snippet,contentDetails,statistics",
         myRating="like"
     )
+
     response = request.execute()
+    for item in response["items"]:
+        video_title = item["snippet"]["title"]
+        print(video_title)
 
     print(response)
 
