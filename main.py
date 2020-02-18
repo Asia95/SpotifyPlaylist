@@ -30,6 +30,7 @@ response = requests.post(
     }
 )
 response_json = response.json()
+spotify_playlist_id = response_json['id']
 
 # Get credentials and create an API client
 flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
@@ -53,6 +54,32 @@ while 'nextPageToken' in response:
 
         if video['artist'] is not None and video['track'] is not None:
             print('{} - {}'.format(video['artist'], video['track']))
+            query = "https://api.spotify.com/v1/search?query=track%3A{}+artist%3A{}&type=track".format(
+                video['track'],
+                video['artist']
+            )
+            response = requests.get(
+                query,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer {}".format(OATH_TOKEN)
+                }
+            )
+            response_json = response.json()
+            if len(response_json['tracks']['items']) > 0:
+                print(response_json['tracks']['items'][0]['uri'])
+                query = "https://api.spotify.com/v1/playlists/{}/tracks".format(spotify_playlist_id)
+                request_body = json.dumps({"uris": response_json['tracks']['items'][0]['uri']})
+                response = requests.post(
+                    query,
+                    data=request_body,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": "Bearer {}".format(OATH_TOKEN)
+                    }
+                )
+                response_json = response.json()
+                print(response_json)
 
     request = youtube.videos().list(
         part="snippet,contentDetails,statistics",
