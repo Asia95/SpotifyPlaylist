@@ -9,11 +9,7 @@ import requests
 from spotify_auth import spotify_user_id, OATH_TOKEN
 
 scopes = ["https://www.googleapis.com/auth/youtube.readonly"]
-
-# Disable OAuthlib's HTTPS verification when running locally.
-# *DO NOT* leave this option enabled in production.
 os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
-
 api_service_name = "youtube"
 api_version = "v3"
 client_secrets_file = "client_secret_file.json"
@@ -31,20 +27,18 @@ response = requests.post(
 )
 response_json = response.json()
 spotify_playlist_id = response_json['id']
+liked_songs_uris = []
 
 # Get credentials and create an API client
-flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
-    client_secrets_file, scopes)
+flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(client_secrets_file, scopes)
 credentials = flow.run_console()
-youtube = googleapiclient.discovery.build(
-    api_service_name, api_version, credentials=credentials)
-
+youtube = googleapiclient.discovery.build(api_service_name, api_version, credentials=credentials)
+# Get liked videos from YouTube
 request = youtube.videos().list(
     part="snippet,contentDetails,statistics",
     myRating="like",
     maxResults=50
 )
-
 response = request.execute()
 ydl = youtube_dl.YoutubeDL({})
 while 'nextPageToken' in response:
@@ -67,19 +61,7 @@ while 'nextPageToken' in response:
             )
             response_json = response.json()
             if len(response_json['tracks']['items']) > 0:
-                print(response_json['tracks']['items'][0]['uri'])
-                query = "https://api.spotify.com/v1/playlists/{}/tracks".format(spotify_playlist_id)
-                request_body = json.dumps({"uris": response_json['tracks']['items'][0]['uri']})
-                response = requests.post(
-                    query,
-                    data=request_body,
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": "Bearer {}".format(OATH_TOKEN)
-                    }
-                )
-                response_json = response.json()
-                print(response_json)
+                liked_songs_uris.append(response_json['tracks']['items'][0]['uri'])
 
     request = youtube.videos().list(
         part="snippet,contentDetails,statistics",
@@ -90,9 +72,15 @@ while 'nextPageToken' in response:
 
     response = request.execute()
 
-
-
-print(response)
-
-#if __name__ == "__main__":
-#    main()
+# Add songs from liked videos to Spotify playlist
+query = "https://api.spotify.com/v1/playlists/{}/tracks".format(spotify_playlist_id)
+request_body = json.dumps({"uris": liked_songs_uris})
+response = requests.post(
+    query,
+    data=request_body,
+    headers={
+        "Content-Type": "application/json",
+        "Authorization": "Bearer {}".format(OATH_TOKEN)
+    }
+)
+response_json = response.json()
