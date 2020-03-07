@@ -34,7 +34,7 @@ def get_tracks(response, ydl, songs):
     for item in response["items"]:
         try:
             with ydl:
-                video = ydl.extract_info("https://www.youtube.com/watch?v={}".format(item["id"]), download=False)
+                video = ydl.extract_info("https://www.youtube.com/watch?v={}".format(item["snippet"]["resourceId"]["videoId"]), download=False)
 
             if video['artist'] is not None and video['track'] is not None:
                 query = "https://api.spotify.com/v1/search?query=track%3A{}+artist%3A{}&type=track".format(
@@ -49,28 +49,31 @@ def get_tracks(response, ydl, songs):
                     }
                 ).json()
                 if len(response_json['tracks']['items']) > 0:
+                    print('------------------------------------------------------')
                     songs.append(response_json['tracks']['items'][0]['uri'])
         except:
             print('error')
     return songs
 
+def create_spotify_playlist(name):
+    request_body = json.dumps({"name": name})
+    query = "https://api.spotify.com/v1/users/{}/playlists".format(spotify_user_id)
+    response_json = make_request_post(query, request_body, OATH_TOKEN)
+    return response_json['id']
 
-# Create Spotify Playlist
-request_body = json.dumps({"name": "Youtube Liked Videos"})
-query = "https://api.spotify.com/v1/users/{}/playlists".format(spotify_user_id)
-response_json = make_request_post(query, request_body, OATH_TOKEN)
-spotify_playlist_id = response_json['id']
+
+spotify_playlist_id = create_spotify_playlist("Youtube Liked Videos")
 liked_songs_uris = []
 
-
 youtube = get_youtube_api_client()
+ydl = youtube_dl.YoutubeDL({})
+
 # Get liked videos from YouTube
 response = youtube.videos().list(
     part="snippet,contentDetails,statistics",
     myRating="like",
     maxResults=50
 ).execute()
-ydl = youtube_dl.YoutubeDL({})
 get_tracks(response, ydl, liked_songs_uris)
 while 'nextPageToken' in response:
     response = youtube.videos().list(
@@ -100,14 +103,17 @@ for i in response['items']:
         'songs': []
     })
 
-# Get tracks in playlists
-for p in youtube_playlists:
+# Get tracks in playlists and create spotify playlists
+for k, p in enumerate(youtube_playlists):
+    songs = []
     response = youtube.playlistItems().list(
         part="snippet",
         playlistId=p['id'],
         maxResults="50"
     ).execute()
-    get_tracks(response, ydl, p['songs'])
+    print(response)
+    save_re = response
+    youtube_playlists[k]['songs'] = get_tracks(response, ydl, songs)
 
     while 'nextPageToken' in response:
         response = youtube.videos().list(
@@ -116,5 +122,10 @@ for p in youtube_playlists:
             maxResults=50,
             pageToken=response['nextPageToken']
         ).execute()
-        get_tracks(response, ydl, p['songs'])
+        youtube_playlists[k]['songs'] = get_tracks(response, ydl, songs)
 
+    if len(songs) > 0:
+        spotify_playlist_id = create_spotify_playlist(p.title)
+        query = "https://api.spotify.com/v1/playlists/{}/tracks".format(spotify_playlist_id)
+        request_body = json.dumps({"uris": songs})
+        response_json = make_request_post(query, request_body, OATH_TOKEN)
